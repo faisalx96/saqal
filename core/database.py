@@ -39,6 +39,38 @@ def init_db():
 
     engine = get_engine()
     SQLModel.metadata.create_all(engine)
+    _run_migrations()
+
+
+def _run_migrations():
+    """Run any pending schema migrations for new nullable columns."""
+    import sqlite3
+
+    db_path = get_database_path()
+    if not db_path.exists():
+        return
+
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+
+    try:
+        # Add mlflow_trace_id to runresult
+        cursor.execute("PRAGMA table_info(runresult)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "mlflow_trace_id" not in columns:
+            cursor.execute("ALTER TABLE runresult ADD COLUMN mlflow_trace_id TEXT")
+
+        # Add mlflow_experiment_id to session
+        cursor.execute("PRAGMA table_info(session)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if columns and "mlflow_experiment_id" not in columns:
+            cursor.execute(
+                "ALTER TABLE session ADD COLUMN mlflow_experiment_id TEXT"
+            )
+
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_session() -> SQLSession:

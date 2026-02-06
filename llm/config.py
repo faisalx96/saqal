@@ -42,3 +42,8 @@ class LLMConfig:
             # OpenRouter requires provider/model format for some models
             return model
         return model
+
+    def to_mlflow_model_uri(self, model: Optional[str] = None) -> str:
+        """Convert to MLflow model URI format (openai:/<model>)."""
+        model = model or self.default_model
+        return f"openai:/{model}"

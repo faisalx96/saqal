@@ -22,6 +22,8 @@ from core.run_manager import RunManager
 from llm.client import LLMClient
 from gepa_adapter.adapter import InteractiveGEPAAdapter, MutationProposal
 from gepa_adapter.feedback_converter import FeedbackItem
+from memory.mlflow_config import init_mlflow, get_or_create_experiment
+from memory.judge_manager import JudgeManager
 
 # Initialize
 init_state()
@@ -112,8 +114,41 @@ if proposal is None:
     # Generate new proposal
     st.header("Generating Improvements...")
 
+    # Step 1: Align judge with MemAlign to extract accumulated principles
+    accumulated_principles = ""
+    init_mlflow()
+    if not session.mlflow_experiment_id:
+        experiment_id = get_or_create_experiment(session.id, session.name)
+        session_manager.update_session(session.id, mlflow_experiment_id=experiment_id)
+        session = session_manager.get_session(session_id)
+
+    if session.mlflow_experiment_id:
+        with st.spinner("Aligning judge with accumulated feedback..."):
+            try:
+                judge_mgr = JudgeManager(
+                    model_name=session.model_name,
+                    provider=session.model_provider,
+                )
+                alignment = judge_mgr.align(
+                    experiment_id=session.mlflow_experiment_id
+                )
+                accumulated_principles = alignment.distilled_principles
+
+                # Store for auto-judge use on Review page
+                set_state("judge_manager", judge_mgr)
+                set_state("alignment_done", True)
+                set_state("distilled_principles", accumulated_principles)
+
+                if alignment.trace_count > 0:
+                    st.success(
+                        f"Aligned with {alignment.trace_count} traces. "
+                        f"Extracted principles for prompt improvement."
+                    )
+            except Exception as e:
+                st.warning(f"Memory alignment skipped: {e}")
+
+    # Step 2: Build feedback items and generate GEPA proposal
     with st.spinner("GEPA is analyzing feedback and proposing improvements..."):
-        # Build feedback items
         feedback_items = []
         for result in feedback_results:
             input_obj = input_manager.get_input(result.input_id)
@@ -128,11 +163,12 @@ if proposal is None:
                     )
                 )
 
-        # Create GEPA adapter and get proposal
+        # Create GEPA adapter with accumulated principles from MemAlign
         gepa = InteractiveGEPAAdapter(
             initial_prompt=current_version.prompt_text,
             task_description=session.task_description,
             llm_client=llm_client,
+            accumulated_principles=accumulated_principles,
         )
 
         try:

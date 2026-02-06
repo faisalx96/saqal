@@ -30,6 +30,11 @@ wheels/
 data/*.db
 *.db
 
+# MLflow
+data/mlruns/
+mlruns/
+mlartifacts/
+
 # IDE
 .idea/
 .vscode/

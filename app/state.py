@@ -21,6 +21,12 @@ def init_state() -> None:
         "comparison_mode": False,
         "old_version_id": None,
         "new_version_id": None,
+        # Memory / MLflow state
+        "judge_manager": None,
+        "judge_suggestions": {},
+        "alignment_done": False,
+        "distilled_principles": "",
+        "mlflow_initialized": False,
         # General
         "page_initialized": {},
     }
@@ -53,6 +59,10 @@ def clear_session() -> None:
     set_state("comparison_mode", False)
     set_state("old_version_id", None)
     set_state("new_version_id", None)
+    set_state("judge_manager", None)
+    set_state("judge_suggestions", {})
+    set_state("alignment_done", False)
+    set_state("distilled_principles", "")
 
 
 def get_current_session_id() -> Optional[str]:

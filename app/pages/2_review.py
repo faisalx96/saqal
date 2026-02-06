@@ -23,6 +23,8 @@ from core.input_manager import InputManager
 from core.prompt_manager import PromptManager
 from core.run_manager import RunManager
 from llm.client import LLMClient
+from memory.mlflow_config import init_mlflow, get_or_create_experiment
+from memory.trace_logger import TraceLogger
 
 # Initialize
 init_state()
@@ -83,7 +85,22 @@ llm_client = LLMClient(
     default_model=session.model_name,
     default_temperature=session.model_temperature,
 )
-run_manager = RunManager(llm_client)
+
+# Initialize trace logger for MLflow memory
+init_mlflow()
+if not session.mlflow_experiment_id:
+    experiment_id = get_or_create_experiment(session.id, session.name)
+    session_manager.update_session(session.id, mlflow_experiment_id=experiment_id)
+    session = session_manager.get_session(session_id)
+
+trace_logger = None
+if session.mlflow_experiment_id:
+    try:
+        trace_logger = TraceLogger(experiment_id=session.mlflow_experiment_id)
+    except Exception:
+        pass  # Tracing is optional
+
+run_manager = RunManager(llm_client, trace_logger=trace_logger)
 
 # Check if this is a resumed session
 is_resumed = get_state("session_resumed", False)
@@ -197,6 +214,26 @@ pending_count = sum(1 for r in input_to_result.values() if r.human_feedback is N
 
 render_feedback_summary(good_count, bad_count, pending_count)
 
+# Run auto-judge suggestions if judge is aligned
+judge_manager = get_state("judge_manager")
+judge_suggestions = get_state("judge_suggestions", {})
+
+if judge_manager and judge_manager.is_aligned:
+    for result in batch_results_dict.values():
+        if result.id not in judge_suggestions and result.human_feedback is None:
+            input_obj = input_manager.get_input(result.input_id)
+            if input_obj:
+                suggestion = judge_manager.suggest(
+                    input_content=input_obj.content,
+                    output=result.output,
+                )
+                if suggestion:
+                    judge_suggestions[result.id] = {
+                        "is_good": suggestion.is_good,
+                        "rationale": suggestion.rationale,
+                    }
+    set_state("judge_suggestions", judge_suggestions)
+
 st.markdown("---")
 
 # Current item
@@ -208,6 +245,9 @@ if batch_input_ids and current_index < len(batch_input_ids):
     if current_input and current_result:
         st.markdown(f"### Item {current_index + 1} of {total}")
 
+        # Get auto-judge suggestion for this result (if available)
+        current_suggestion = judge_suggestions.get(current_result.id)
+
         # Render feedback card
         feedback_result = render_feedback_card(
             input_content=current_input.content,
@@ -216,6 +256,7 @@ if batch_input_ids and current_index < len(batch_input_ids):
             current_feedback=current_result.human_feedback,
             feedback_reason=current_result.feedback_reason,
             human_correction=current_result.human_correction,
+            judge_suggestion=current_suggestion,
             card_key=f"feedback_{current_input_id}",
         )
 

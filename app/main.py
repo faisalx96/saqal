@@ -11,6 +11,11 @@ from core.database import init_db
 
 init_db()
 
+# Initialize MLflow memory layer
+from memory.mlflow_config import init_mlflow
+
+init_mlflow()
+
 # Page configuration
 st.set_page_config(
     page_title="Saqal - Prompt Refinement Workbench",

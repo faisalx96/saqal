@@ -1,6 +1,8 @@
 """Run management for Saqal."""
 
-from typing import Callable, Optional
+from __future__ import annotations
+
+from typing import Callable, Optional, TYPE_CHECKING
 
 from sqlmodel import select
 
@@ -8,12 +10,20 @@ from .database import get_session
 from .models import RunResult, Input, PromptVersion
 from llm.client import LLMClient
 
+if TYPE_CHECKING:
+    from memory.trace_logger import TraceLogger
+
 
 class RunManager:
     """Manages prompt execution and result storage."""
 
-    def __init__(self, llm_client: LLMClient):
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        trace_logger: Optional[TraceLogger] = None,
+    ):
         self.llm_client = llm_client
+        self.trace_logger = trace_logger
 
     def run_batch(
         self,
@@ -74,6 +84,31 @@ class RunManager:
                 db.commit()
                 db.refresh(result)
                 db.expunge(result)
+
+            # Log MLflow trace if trace_logger is available
+            if self.trace_logger and not output.startswith("Error:"):
+                try:
+                    trace_id = self.trace_logger.log_run_trace(
+                        input_content=input_content,
+                        prompt_text=prompt_text,
+                        output=output,
+                        model_name=self.llm_client.default_model,
+                        prompt_version_id=prompt_version_id,
+                        run_result_id=result.id,
+                    )
+                    # Store trace_id on the result
+                    with get_session() as db:
+                        stmt = select(RunResult).where(RunResult.id == result.id)
+                        r = db.exec(stmt).first()
+                        if r:
+                            r.mlflow_trace_id = trace_id
+                            db.add(r)
+                            db.commit()
+                            db.refresh(r)
+                            db.expunge(r)
+                            result = r  # Use updated result
+                except Exception:
+                    pass  # Tracing failure must not break batch execution
 
             results.append(result)
 
@@ -155,6 +190,19 @@ class RunManager:
             db.add(result)
             db.commit()
             db.refresh(result)
+
+            # Log feedback to MLflow if trace_id exists
+            if self.trace_logger and result.mlflow_trace_id:
+                try:
+                    self.trace_logger.log_feedback(
+                        trace_id=result.mlflow_trace_id,
+                        is_good=(human_feedback == "good"),
+                        reason=feedback_reason,
+                        correction=human_correction,
+                    )
+                except Exception:
+                    pass  # Feedback logging failure must not break UI
+
             db.expunge(result)
             return result
 

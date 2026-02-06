@@ -19,6 +19,8 @@ from core.input_manager import InputManager
 from core.prompt_manager import PromptManager
 from core.run_manager import RunManager
 from llm.client import LLMClient
+from memory.mlflow_config import init_mlflow, get_or_create_experiment
+from memory.trace_logger import TraceLogger
 
 # Initialize
 init_state()
@@ -280,6 +282,13 @@ if st.button(
                     status="accepted",  # v1 is auto-accepted
                 )
 
+                # Create MLflow experiment for this session
+                init_mlflow()
+                experiment_id = get_or_create_experiment(session.id, session.name)
+                session_manager.update_session(
+                    session.id, mlflow_experiment_id=experiment_id
+                )
+
                 st.success(f"Created session with {len(created_inputs)} inputs!")
 
                 # Get first batch
@@ -301,7 +310,8 @@ if st.button(
                     default_temperature=temperature,
                 )
 
-                run_manager = RunManager(llm_client)
+                trace_logger = TraceLogger(experiment_id=experiment_id)
+                run_manager = RunManager(llm_client, trace_logger=trace_logger)
 
                 def on_progress(completed, total):
                     progress_bar.progress(completed / total)

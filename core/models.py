@@ -19,6 +19,7 @@ class Session(SQLModel, table=True):
     model_temperature: float = 0.7
     batch_size: int = 10
     status: str = Field(default="active", index=True)  # 'active', 'completed', 'archived'
+    mlflow_experiment_id: Optional[str] = None  # Links to MLflow experiment
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -61,4 +62,5 @@ class RunResult(SQLModel, table=True):
     feedback_reason: Optional[str] = None
     human_correction: Optional[str] = None
     comparison_result: Optional[str] = None  # 'better', 'worse', 'same'
+    mlflow_trace_id: Optional[str] = None  # Links to MLflow trace for feedback logging
     created_at: datetime = Field(default_factory=datetime.utcnow)

@@ -11,6 +11,7 @@ def render_feedback_card(
     current_feedback: Optional[str] = None,
     feedback_reason: Optional[str] = None,
     human_correction: Optional[str] = None,
+    judge_suggestion: Optional[dict] = None,
     on_feedback: Optional[Callable[[str, Optional[str], Optional[str]], None]] = None,
     card_key: str = "feedback",
 ) -> dict:
@@ -43,6 +44,15 @@ def render_feedback_card(
     # Output display
     st.markdown("**Output**")
     st.success(output)
+
+    # Auto-judge suggestion (non-intrusive hint)
+    if judge_suggestion is not None:
+        if judge_suggestion.get("is_good"):
+            st.caption(f"AI suggests: Good")
+        else:
+            rationale = judge_suggestion.get("rationale", "")
+            label = f"AI suggests: Needs work - {rationale}" if rationale else "AI suggests: Needs work"
+            st.caption(label)
 
     # Ground truth if available
     if ground_truth:

@@ -33,6 +33,7 @@ class InteractiveGEPAAdapter:
         task_description: str,
         llm_client: LLMClient,
         reflection_model: Optional[str] = None,
+        accumulated_principles: Optional[str] = None,
     ):
         """
         Initialize the GEPA adapter.
@@ -42,11 +43,13 @@ class InteractiveGEPAAdapter:
             task_description: Description of what the prompt should do
             llm_client: LLM client for making API calls
             reflection_model: Model to use for reflection (defaults to client default)
+            accumulated_principles: Distilled principles from MemAlign (injected into reflection)
         """
         self.current_prompt = initial_prompt
         self.task_description = task_description
         self.llm_client = llm_client
         self.reflection_model = reflection_model
+        self.accumulated_principles = accumulated_principles or ""
         self.pareto_frontier: list[str] = [initial_prompt]
         self.iteration_count = 0
         self.feedback_converter = FeedbackConverter()
@@ -96,6 +99,18 @@ class InteractiveGEPAAdapter:
 
     def _build_reflection_prompt(self, feedback_text: str) -> str:
         """Build the reflection prompt for GEPA."""
+        # Build the accumulated memory section if principles exist
+        memory_section = ""
+        if self.accumulated_principles:
+            memory_section = f"""
+ACCUMULATED PRINCIPLES FROM PAST ITERATIONS:
+(These are patterns distilled from ALL previous rounds of human feedback.
+ Respect these principles to avoid regressions on previously-fixed issues.)
+
+{self.accumulated_principles}
+
+"""
+
         return f"""You are an expert prompt engineer analyzing a prompt that needs improvement.
 
 TASK DESCRIPTION:
@@ -109,12 +124,13 @@ CURRENT PROMPT:
 HUMAN FEEDBACK ON RECENT OUTPUTS:
 
 {feedback_text}
-
+{memory_section}
 INSTRUCTIONS:
 1. Analyze the patterns in the bad outputs
 2. Identify what the prompt is missing or doing wrong
-3. Propose specific changes to fix the issues
-4. Write the complete improved prompt
+3. Review the accumulated principles (if any) and ensure your changes don't violate them
+4. Propose specific changes to fix the issues
+5. Write the complete improved prompt
 
 Respond in this exact format:
 
