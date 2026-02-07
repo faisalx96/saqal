@@ -1,5 +1,9 @@
 """Compare page for side-by-side version comparison."""
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 import streamlit as st
 
 from app.state import (
